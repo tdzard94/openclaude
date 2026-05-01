@@ -56,6 +56,23 @@ type BootstrapCachePayload = {
   contextWindowsByModel?: Record<string, number>
 }
 
+function updateContextWindowCacheByScope(
+  existing: Record<string, Record<string, number>> | undefined,
+  scope: string,
+  contextWindows: Record<string, number> | null,
+): Record<string, Record<string, number>> {
+  if (contextWindows) {
+    return {
+      ...(existing ?? {}),
+      [scope]: contextWindows,
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(existing ?? {}).filter(([cachedScope]) => cachedScope !== scope),
+  )
+}
+
 async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
   if (isEssentialTrafficOnly()) {
     logForDebugging('[Bootstrap] Skipped: Nonessential traffic disabled')
@@ -230,16 +247,11 @@ export async function fetchBootstrapData(): Promise<void> {
       clientDataCache: clientData,
       additionalModelOptionsCache: additionalModelOptions,
       additionalModelOptionsCacheScope: additionalModelOptionsScope,
-      openaiContextWindowsCacheByScope: nextContextWindows
-        ? {
-            ...(current.openaiContextWindowsCacheByScope ?? {}),
-            [additionalModelOptionsScope]: nextContextWindows,
-          }
-        : Object.fromEntries(
-            Object.entries(current.openaiContextWindowsCacheByScope ?? {}).filter(
-              ([scope]) => scope !== additionalModelOptionsScope,
-            ),
-          ),
+      openaiContextWindowsCacheByScope: updateContextWindowCacheByScope(
+        current.openaiContextWindowsCacheByScope,
+        additionalModelOptionsScope,
+        nextContextWindows,
+      ),
     }))
   } catch (error) {
     logError(error)

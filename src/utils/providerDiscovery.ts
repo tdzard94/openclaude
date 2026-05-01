@@ -354,8 +354,11 @@ export async function getOpenAICompatibleContextWindows(options?: {
             contextWindows[options.model] = slotContext
           } else {
             const discoveredModels = Object.keys(contextWindows)
-            const [soleModel] = discoveredModels
-            if (soleModel && discoveredModels.length === 1) {
+            if (discoveredModels.length === 1) {
+              // /props reports the live slot context after runtime overrides
+              // (for example --ctx-size), which is more useful than the model's
+              // training context when the server exposes a single active model.
+              const [soleModel] = discoveredModels
               contextWindows[soleModel] = slotContext
             }
           }
