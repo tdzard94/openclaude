@@ -145,6 +145,20 @@ export function getOpenAICompatibleModelsBaseUrl(baseUrl?: string): string {
   ).replace(/\/+$/, '')
 }
 
+function getOpenAICompatibleAuthHeaders(
+  baseUrl: string,
+  apiKey?: string,
+): HeadersInit | undefined {
+  if (!apiKey) {
+    return undefined
+  }
+
+  const isBankr = baseUrl.toLowerCase().includes('bankr')
+  return isBankr
+    ? { 'X-API-Key': apiKey }
+    : { Authorization: `Bearer ${apiKey}` }
+}
+
 export function getLocalOpenAICompatibleProviderLabel(baseUrl?: string): string {
   try {
     const parsed = new URL(getOpenAICompatibleModelsBaseUrl(baseUrl))
@@ -248,16 +262,11 @@ export async function listOpenAICompatibleModels(options?: {
   const { signal, clear } = withTimeoutSignal(5000)
   try {
     const baseUrl = getOpenAICompatibleModelsBaseUrl(options?.baseUrl)
-    const isBankr = baseUrl.toLowerCase().includes('bankr')
     const response = await fetch(
       `${baseUrl}/models`,
       {
         method: 'GET',
-        headers: options?.apiKey
-          ? isBankr
-            ? { 'X-API-Key': options.apiKey }
-            : { Authorization: `Bearer ${options.apiKey}` }
-          : undefined,
+        headers: getOpenAICompatibleAuthHeaders(baseUrl, options?.apiKey),
         signal,
       },
     )
@@ -278,6 +287,88 @@ export async function listOpenAICompatibleModels(options?: {
     )
   } catch {
     return null
+  } finally {
+    clear()
+  }
+}
+
+type OpenAICompatiblePropsPayload = {
+  default_generation_settings?: {
+    n_ctx?: number
+  }
+}
+
+type OpenAICompatibleModelsPayload = {
+  data?: Array<{
+    id?: string
+    meta?: {
+      n_ctx_train?: number
+    }
+  }>
+}
+
+export async function getOpenAICompatibleContextWindows(options?: {
+  baseUrl?: string
+  apiKey?: string
+  model?: string
+}): Promise<Record<string, number>> {
+  const { signal, clear } = withTimeoutSignal(5000)
+  try {
+    const baseUrl = getOpenAICompatibleModelsBaseUrl(options?.baseUrl)
+    const headers = getOpenAICompatibleAuthHeaders(baseUrl, options?.apiKey)
+    const contextWindows: Record<string, number> = {}
+
+    try {
+      const response = await fetch(`${baseUrl}/models`, {
+        method: 'GET',
+        headers,
+        signal,
+      })
+      if (response.ok) {
+        const data = (await response.json()) as OpenAICompatibleModelsPayload
+        for (const model of data.data ?? []) {
+          if (
+            model.id &&
+            typeof model.meta?.n_ctx_train === 'number' &&
+            model.meta.n_ctx_train > 0
+          ) {
+            contextWindows[model.id] = model.meta.n_ctx_train
+          }
+        }
+      }
+    } catch {
+      // Ignore per-endpoint failures and fall through to /props.
+    }
+
+    try {
+      const response = await fetch(`${baseUrl}/props`, {
+        method: 'GET',
+        headers,
+        signal,
+      })
+      if (response.ok) {
+        const data = (await response.json()) as OpenAICompatiblePropsPayload
+        const slotContext = data.default_generation_settings?.n_ctx
+        if (typeof slotContext === 'number' && slotContext > 0) {
+          if (options?.model) {
+            contextWindows[options.model] = slotContext
+          } else {
+            const discoveredModels = Object.keys(contextWindows)
+            if (discoveredModels.length === 1) {
+              // /props reports the live slot context after runtime overrides
+              // (for example --ctx-size), which is more useful than the model's
+              // training context when the server exposes a single active model.
+              const [soleModel] = discoveredModels
+              contextWindows[soleModel] = slotContext
+            }
+          }
+        }
+      }
+    } catch {
+      // Ignore /props failures and rely on whatever metadata we collected.
+    }
+
+    return contextWindows
   } finally {
     clear()
   }

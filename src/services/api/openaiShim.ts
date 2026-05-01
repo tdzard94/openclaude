@@ -56,6 +56,7 @@ import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
   getLocalProviderRetryBaseUrls,
   getGithubEndpointType,
+  isLikelyOllamaEndpoint,
   isLocalProviderUrl,
   resolveRuntimeCodexCredentials,
   resolveProviderRequest,
@@ -233,6 +234,12 @@ function redactUrlForDiagnostics(url: string): string {
 
 function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+// Ollama rejects OpenAI's stream_options payload, while llama.cpp-style local
+// servers use it to expose streaming usage in the final empty-choices chunk.
+function shouldIncludeStreamUsage(baseUrl: string): boolean {
+  return !isLocalProviderUrl(baseUrl) || !isLikelyOllamaEndpoint(baseUrl)
 }
 
 // ---------------------------------------------------------------------------
@@ -1558,7 +1565,7 @@ class OpenAIShimMessages {
       body.max_completion_tokens = maxCompletionTokensValue
     }
 
-    if (params.stream && !isLocalProviderUrl(request.baseUrl)) {
+    if (params.stream && shouldIncludeStreamUsage(request.baseUrl)) {
       body.stream_options = { include_usage: true }
     }
 

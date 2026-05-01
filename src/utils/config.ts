@@ -608,6 +608,10 @@ export type GlobalConfig = {
   // Keyed by provider profile id.
   openaiAdditionalModelOptionsCacheByProfile?: Record<string, ModelOption[]>
 
+  // Per-local-endpoint cache for discovered context windows.
+  // Keyed by additionalModelOptions scope (for example openai:http://localhost:8080/v1).
+  openaiContextWindowsCacheByScope?: Record<string, Record<string, number>>
+
   // Disk cache for /api/claude_code/organizations/metrics_enabled.
   // Org-level settings change rarely; persisting across processes avoids a
   // cold API call on every `claude -p` invocation.
@@ -671,6 +675,7 @@ function createDefaultGlobalConfig(): GlobalConfig {
     copyFullResponse: false,
     providerProfiles: [],
     openaiAdditionalModelOptionsCacheByProfile: {},
+    openaiContextWindowsCacheByScope: {},
     knowledgeGraphEnabled: true,
   }
   return config

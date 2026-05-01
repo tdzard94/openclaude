@@ -16,6 +16,7 @@ import { getAPIProvider } from '../../utils/model/providers.js'
 import { isEssentialTrafficOnly } from '../../utils/privacyLevel.js'
 import type { ModelOption } from '../../utils/model/modelOptions.js'
 import {
+  getOpenAICompatibleContextWindows,
   getLocalOpenAICompatibleProviderLabel,
   listOpenAICompatibleModels,
 } from '../../utils/providerDiscovery.js'
@@ -52,6 +53,24 @@ type BootstrapCachePayload = {
   clientData: Record<string, unknown> | null
   additionalModelOptions: ModelOption[]
   additionalModelOptionsScope: string
+  contextWindowsByModel?: Record<string, number>
+}
+
+function updateContextWindowCacheByScope(
+  existing: Record<string, Record<string, number>> | undefined,
+  scope: string,
+  contextWindows: Record<string, number> | null,
+): Record<string, Record<string, number>> {
+  if (contextWindows) {
+    return {
+      ...(existing ?? {}),
+      [scope]: contextWindows,
+    }
+  }
+
+  return Object.fromEntries(
+    Object.entries(existing ?? {}).filter(([cachedScope]) => cachedScope !== scope),
+  )
 }
 
 async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
@@ -146,6 +165,11 @@ async function fetchLocalOpenAIModelOptions(): Promise<BootstrapCachePayload | n
     baseUrl,
     apiKey: process.env.OPENAI_API_KEY,
   })
+  const contextWindowsByModel = await getOpenAICompatibleContextWindows({
+    baseUrl,
+    apiKey: process.env.OPENAI_API_KEY,
+    model: process.env.OPENAI_MODEL,
+  })
 
   if (models === null) {
     logForDebugging('[Bootstrap] Local OpenAI model discovery failed')
@@ -162,6 +186,7 @@ async function fetchLocalOpenAIModelOptions(): Promise<BootstrapCachePayload | n
       label: model,
       description: `Detected from ${providerLabel}`,
     })),
+    contextWindowsByModel,
   }
 }
 
@@ -190,15 +215,27 @@ export async function fetchBootstrapData(): Promise<void> {
       return
     }
 
-    const { clientData, additionalModelOptions, additionalModelOptionsScope } =
+    const {
+      clientData,
+      additionalModelOptions,
+      additionalModelOptionsScope,
+      contextWindowsByModel,
+    } =
       payload
 
     // Only persist if data actually changed — avoids a config write on every startup.
     const config = getGlobalConfig()
+    const currentContextWindows =
+      config.openaiContextWindowsCacheByScope?.[additionalModelOptionsScope] ?? null
+    const nextContextWindows =
+      contextWindowsByModel && Object.keys(contextWindowsByModel).length > 0
+        ? contextWindowsByModel
+        : null
     if (
       isEqual(config.clientDataCache, clientData) &&
       isEqual(config.additionalModelOptionsCache, additionalModelOptions) &&
-      config.additionalModelOptionsCacheScope === additionalModelOptionsScope
+      config.additionalModelOptionsCacheScope === additionalModelOptionsScope &&
+      isEqual(currentContextWindows, nextContextWindows)
     ) {
       logForDebugging('[Bootstrap] Cache unchanged, skipping write')
       return
@@ -210,6 +247,11 @@ export async function fetchBootstrapData(): Promise<void> {
       clientDataCache: clientData,
       additionalModelOptionsCache: additionalModelOptions,
       additionalModelOptionsCacheScope: additionalModelOptionsScope,
+      openaiContextWindowsCacheByScope: updateContextWindowCacheByScope(
+        current.openaiContextWindowsCacheByScope,
+        additionalModelOptionsScope,
+        nextContextWindows,
+      ),
     }))
   } catch (error) {
     logError(error)
