@@ -53,7 +53,7 @@ type BootstrapCachePayload = {
   clientData: Record<string, unknown> | null
   additionalModelOptions: ModelOption[]
   additionalModelOptionsScope: string
-  contextWindowsByModel?: Record<string, number> | null
+  contextWindowsByModel?: Record<string, number>
 }
 
 async function fetchBootstrapAPI(): Promise<BootstrapResponse | null> {
@@ -210,11 +210,15 @@ export async function fetchBootstrapData(): Promise<void> {
     const config = getGlobalConfig()
     const currentContextWindows =
       config.openaiContextWindowsCacheByScope?.[additionalModelOptionsScope] ?? null
+    const nextContextWindows =
+      contextWindowsByModel && Object.keys(contextWindowsByModel).length > 0
+        ? contextWindowsByModel
+        : null
     if (
       isEqual(config.clientDataCache, clientData) &&
       isEqual(config.additionalModelOptionsCache, additionalModelOptions) &&
       config.additionalModelOptionsCacheScope === additionalModelOptionsScope &&
-      isEqual(currentContextWindows, contextWindowsByModel ?? null)
+      isEqual(currentContextWindows, nextContextWindows)
     ) {
       logForDebugging('[Bootstrap] Cache unchanged, skipping write')
       return
@@ -226,12 +230,16 @@ export async function fetchBootstrapData(): Promise<void> {
       clientDataCache: clientData,
       additionalModelOptionsCache: additionalModelOptions,
       additionalModelOptionsCacheScope: additionalModelOptionsScope,
-      openaiContextWindowsCacheByScope: contextWindowsByModel
+      openaiContextWindowsCacheByScope: nextContextWindows
         ? {
             ...(current.openaiContextWindowsCacheByScope ?? {}),
-            [additionalModelOptionsScope]: contextWindowsByModel,
+            [additionalModelOptionsScope]: nextContextWindows,
           }
-        : current.openaiContextWindowsCacheByScope,
+        : Object.fromEntries(
+            Object.entries(current.openaiContextWindowsCacheByScope ?? {}).filter(
+              ([scope]) => scope !== additionalModelOptionsScope,
+            ),
+          ),
     }))
   } catch (error) {
     logError(error)

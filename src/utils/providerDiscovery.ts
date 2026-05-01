@@ -311,7 +311,7 @@ export async function getOpenAICompatibleContextWindows(options?: {
   baseUrl?: string
   apiKey?: string
   model?: string
-}): Promise<Record<string, number> | null> {
+}): Promise<Record<string, number>> {
   const { signal, clear } = withTimeoutSignal(5000)
   try {
     const baseUrl = getOpenAICompatibleModelsBaseUrl(options?.baseUrl)
@@ -365,7 +365,7 @@ export async function getOpenAICompatibleContextWindows(options?: {
       // Ignore /props failures and rely on whatever metadata we collected.
     }
 
-    return Object.keys(contextWindows).length > 0 ? contextWindows : null
+    return contextWindows
   } finally {
     clear()
   }

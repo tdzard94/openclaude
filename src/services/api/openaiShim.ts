@@ -236,6 +236,8 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+// Ollama rejects OpenAI's stream_options payload, while llama.cpp-style local
+// servers use it to expose streaming usage in the final empty-choices chunk.
 function shouldIncludeStreamUsage(baseUrl: string): boolean {
   return !isLocalProviderUrl(baseUrl) || !isLikelyOllamaEndpoint(baseUrl)
 }
