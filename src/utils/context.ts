@@ -5,6 +5,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { getCanonicalName } from './model/model.js'
 import { getModelCapability } from './model/modelCapabilities.js'
 import { getOpenAIContextWindow, getOpenAIMaxOutputTokens } from './model/openaiContextWindows.js'
+import { getAdditionalModelOptionsCacheScope } from '../services/api/providerConfig.js'
 
 // Model context window size (200k tokens for all models right now)
 export const MODEL_CONTEXT_WINDOW_DEFAULT = 200_000
@@ -92,6 +93,15 @@ export function getContextWindowForModel(
     isEnvTruthy(process.env.CLAUDE_CODE_USE_GITHUB) ||
     isEnvTruthy(process.env.CLAUDE_CODE_USE_MISTRAL)
   if (isOpenAIProvider) {
+    const localScope = getAdditionalModelOptionsCacheScope()
+    const localContextWindow =
+      localScope
+        ? getGlobalConfig().openaiContextWindowsCacheByScope?.[localScope]?.[model]
+        : undefined
+    if (typeof localContextWindow === 'number' && localContextWindow > 0) {
+      return localContextWindow
+    }
+
     const openaiWindow = getOpenAIContextWindow(model)
     if (openaiWindow !== undefined) {
       return openaiWindow

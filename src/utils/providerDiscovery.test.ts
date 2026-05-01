@@ -60,6 +60,53 @@ test('returns null when a local openai-compatible /models request fails', async 
   ).resolves.toBeNull()
 })
 
+test('extracts context windows from local llama.cpp-compatible metadata endpoints', async () => {
+  const { getOpenAICompatibleContextWindows } = await loadProviderDiscoveryModule()
+
+  globalThis.fetch = mock((input) => {
+    const url = typeof input === 'string' ? input : input.url
+    if (url === 'http://localhost:8080/v1/models') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            data: [
+              {
+                id: 'llama-3.2-3b-instruct',
+                meta: { n_ctx_train: 131072 },
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+
+    if (url === 'http://localhost:8080/v1/props') {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            default_generation_settings: {
+              n_ctx: 32768,
+            },
+          }),
+          { status: 200 },
+        ),
+      )
+    }
+
+    throw new Error(`Unexpected URL: ${url}`)
+  }) as typeof globalThis.fetch
+
+  await expect(
+    getOpenAICompatibleContextWindows({
+      baseUrl: 'http://localhost:8080/v1',
+      model: 'llama-3.2-3b-instruct',
+    }),
+  ).resolves.toEqual({
+    'llama-3.2-3b-instruct': 32768,
+  })
+})
+
 test('detects LM Studio from the default localhost port', async () => {
   const { getLocalOpenAICompatibleProviderLabel } =
     await loadProviderDiscoveryModule()

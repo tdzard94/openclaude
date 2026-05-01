@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 
 import { getMaxOutputTokensForModel } from '../services/api/claude.ts'
+import { saveGlobalConfig } from './config.ts'
 import {
   getContextWindowForModel,
   getModelMaxOutputTokens,
@@ -10,12 +11,18 @@ const originalEnv = {
   CLAUDE_CODE_USE_OPENAI: process.env.CLAUDE_CODE_USE_OPENAI,
   CLAUDE_CODE_MAX_OUTPUT_TOKENS: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS,
   OPENAI_MODEL: process.env.OPENAI_MODEL,
+  OPENAI_BASE_URL: process.env.OPENAI_BASE_URL,
 }
 
 beforeEach(() => {
   delete process.env.CLAUDE_CODE_USE_OPENAI
   delete process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS
   delete process.env.OPENAI_MODEL
+  delete process.env.OPENAI_BASE_URL
+  saveGlobalConfig(current => ({
+    ...current,
+    openaiContextWindowsCacheByScope: {},
+  }))
 })
 
 afterEach(() => {
@@ -35,6 +42,11 @@ afterEach(() => {
   } else {
     process.env.OPENAI_MODEL = originalEnv.OPENAI_MODEL
   }
+  restoreEnv('OPENAI_BASE_URL', originalEnv.OPENAI_BASE_URL)
+  saveGlobalConfig(current => ({
+    ...current,
+    openaiContextWindowsCacheByScope: {},
+  }))
 })
 
 test('deepseek-v4-flash uses provider-specific context and output caps', () => {
@@ -142,6 +154,23 @@ test('unknown openai-compatible models use the 128k fallback window (not 8k, see
   delete process.env.OPENAI_MODEL
 
   expect(getContextWindowForModel('some-unknown-3p-model')).toBe(128_000)
+})
+
+test('local openai-compatible models use cached discovered context windows when available', () => {
+  process.env.CLAUDE_CODE_USE_OPENAI = '1'
+  process.env.OPENAI_BASE_URL = 'http://127.0.0.1:8080/v1'
+
+  saveGlobalConfig(current => ({
+    ...current,
+    openaiContextWindowsCacheByScope: {
+      ...(current.openaiContextWindowsCacheByScope ?? {}),
+      'openai:http://127.0.0.1:8080/v1': {
+        'llama-3.2-3b-instruct': 32_768,
+      },
+    },
+  }))
+
+  expect(getContextWindowForModel('llama-3.2-3b-instruct')).toBe(32_768)
 })
 
 test('MiniMax-M2.5 and M2.1 use explicit provider-specific context and output caps', () => {

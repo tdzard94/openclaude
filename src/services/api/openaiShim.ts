@@ -56,6 +56,7 @@ import { fetchWithProxyRetry } from './fetchWithProxyRetry.js'
 import {
   getLocalProviderRetryBaseUrls,
   getGithubEndpointType,
+  isLikelyOllamaEndpoint,
   isLocalProviderUrl,
   resolveRuntimeCodexCredentials,
   resolveProviderRequest,
@@ -1558,7 +1559,11 @@ class OpenAIShimMessages {
       body.max_completion_tokens = maxCompletionTokensValue
     }
 
-    if (params.stream && !isLocalProviderUrl(request.baseUrl)) {
+    if (
+      params.stream &&
+      (!isLocalProviderUrl(request.baseUrl) ||
+        !isLikelyOllamaEndpoint(request.baseUrl))
+    ) {
       body.stream_options = { include_usage: true }
     }
 

@@ -725,7 +725,7 @@ test('preserves usage from final OpenAI stream chunk with empty choices', async 
   expect(usageEvent?.usage?.output_tokens).toBe(45)
 })
 
-test('uses max_tokens instead of max_completion_tokens for local providers', async () => {
+test('uses max_tokens instead of max_completion_tokens for local Ollama providers', async () => {
   process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
 
   globalThis.fetch = (async (_input, init) => {
@@ -769,6 +769,77 @@ test('uses max_tokens instead of max_completion_tokens for local providers', asy
     max_tokens: 64,
     stream: false,
   })
+})
+
+test('requests streaming usage for local non-Ollama providers', async () => {
+  process.env.OPENAI_BASE_URL = 'http://127.0.0.1:8080/v1'
+
+  globalThis.fetch = (async (_input, init) => {
+    const body = JSON.parse(String(init?.body))
+    expect(body.max_tokens).toBe(64)
+    expect(body.max_completion_tokens).toBeUndefined()
+    expect(body.stream_options).toEqual({ include_usage: true })
+
+    return makeSseResponse(
+      makeStreamChunks([
+        {
+          id: 'chatcmpl-1',
+          object: 'chat.completion.chunk',
+          model: 'llama.cpp',
+          choices: [
+            {
+              index: 0,
+              delta: { content: 'hello' },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: 'chatcmpl-1',
+          object: 'chat.completion.chunk',
+          model: 'llama.cpp',
+          choices: [
+            {
+              index: 0,
+              delta: {},
+              finish_reason: 'stop',
+            },
+          ],
+        },
+        {
+          id: 'chatcmpl-1',
+          object: 'chat.completion.chunk',
+          model: 'llama.cpp',
+          choices: [],
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 2,
+            total_tokens: 12,
+          },
+        },
+      ]),
+    )
+  }) as FetchType
+
+  const client = createOpenAIShimClient({}) as OpenAIShimClient
+  const result = await client.beta.messages.create({
+    model: 'llama.cpp',
+    messages: [{ role: 'user', content: 'hello' }],
+    max_tokens: 64,
+    stream: true,
+  }).withResponse()
+
+  const events: Array<Record<string, unknown>> = []
+  for await (const event of result.data) {
+    events.push(event)
+  }
+
+  const usageEvent = events.find(
+    event => event.type === 'message_delta' && typeof event.usage === 'object' && event.usage !== null,
+  ) as { usage?: { input_tokens?: number; output_tokens?: number } } | undefined
+
+  expect(usageEvent?.usage?.input_tokens).toBe(10)
+  expect(usageEvent?.usage?.output_tokens).toBe(2)
 })
 
 test('keeps max_completion_tokens for non-local non-github providers', async () => {
