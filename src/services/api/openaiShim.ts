@@ -236,6 +236,10 @@ function sleepMs(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
+function shouldIncludeStreamUsage(baseUrl: string): boolean {
+  return !isLocalProviderUrl(baseUrl) || !isLikelyOllamaEndpoint(baseUrl)
+}
+
 // ---------------------------------------------------------------------------
 // Types — minimal subset of Anthropic SDK types we need to produce
 // ---------------------------------------------------------------------------
@@ -1559,11 +1563,7 @@ class OpenAIShimMessages {
       body.max_completion_tokens = maxCompletionTokensValue
     }
 
-    if (
-      params.stream &&
-      (!isLocalProviderUrl(request.baseUrl) ||
-        !isLikelyOllamaEndpoint(request.baseUrl))
-    ) {
+    if (params.stream && shouldIncludeStreamUsage(request.baseUrl)) {
       body.stream_options = { include_usage: true }
     }
 

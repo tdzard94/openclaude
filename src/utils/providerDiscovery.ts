@@ -353,8 +353,9 @@ export async function getOpenAICompatibleContextWindows(options?: {
           if (options?.model) {
             contextWindows[options.model] = slotContext
           } else {
-            const [soleModel] = Object.keys(contextWindows)
-            if (soleModel && Object.keys(contextWindows).length === 1) {
+            const discoveredModels = Object.keys(contextWindows)
+            const [soleModel] = discoveredModels
+            if (soleModel && discoveredModels.length === 1) {
               contextWindows[soleModel] = slotContext
             }
           }
